@@ -1,0 +1,33 @@
+[model]
+base_path = "models/llama-3-8b"
+backend = "llama_cpp"
+tokenizer = "sentencepiece:models/llama-3/tokenizer.model"
+
+[lora]
+enabled = true
+use_qlora = true
+r = 16
+alpha = 32
+ dropout = 0.05
+target_modules = ["q_proj", "k_proj", "v_proj", "o_proj"]
+
+[training]
+device = "cuda:0"
+batch_size = 8
+gradient_accumulation = 4
+lr = 0.0002
+epochs = 3
+max_steps = 1000
+warmup_steps = 50
+weight_decay = 0.01
+seed = 42
+output_dir = "artifacts/run-001"
+
+[data]
+train_path = "artifacts/dataset/train"
+val_path = "artifacts/dataset/val"
+max_seq_len = 2048
+shuffle = true
+
+[evaluation]
+metrics = ["perplexity", "exact_match", "bleu", "rouge_l"]

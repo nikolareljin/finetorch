@@ -1,0 +1,17 @@
+name: ci
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  pull_request:
+
+jobs:
+  rust:
+    uses: nikolareljin/ci-helpers/.github/workflows/rust-scan.yml@production
+    with:
+      working_directory: "."
+      lint_command: "./scripts/lint.sh"
+      test_command: "./scripts/test.sh"
+      audit_command: "cargo fetch && cargo audit || true"

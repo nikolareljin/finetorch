@@ -1,0 +1,46 @@
+[package]
+name = "finetorch"
+version = "0.1.0"
+edition = "2021"
+description = "Rust-native LLM finetuning toolkit for LoRA/QLoRA workflows"
+license = "MIT"
+repository = "https://github.com/nikolareljin/finetorch"
+readme = "README.md"
+
+[lib]
+name = "finetorch"
+path = "src/lib.rs"
+
+[[bin]]
+name = "finetorch"
+path = "src/main.rs"
+
+[features]
+default = []
+# Backend bridges
+backend-llama-cpp = ["dep:llama-cpp-2"]
+backend-candle = ["dep:candle-core", "dep:candle-nn", "dep:candle-transformers"]
+# GPU/runtime integrations
+gpu-cuda = ["dep:cudarc"]
+gpu-wgpu = ["dep:wgpu"]
+
+[dependencies]
+anyhow = "1.0"
+clap = { version = "4.5", features = ["derive"] }
+rand = "0.8"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+toml = "0.8"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+
+# Optional backends and accelerator crates.
+llama-cpp-2 = { version = "0.1", optional = true }
+candle-core = { version = "0.8", optional = true }
+candle-nn = { version = "0.8", optional = true }
+candle-transformers = { version = "0.8", optional = true }
+cudarc = { version = "0.12", optional = true }
+wgpu = { version = "24.0", optional = true }
+
+[dev-dependencies]
+tempfile = "3.12"
