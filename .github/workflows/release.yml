@@ -1,0 +1,53 @@
+name: release
+
+on:
+  push:
+    tags:
+      - "[0-9]*.[0-9]*.[0-9]*"
+      - "v[0-9]*.[0-9]*.[0-9]*"
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Tag to publish. Defaults to the current ref name."
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Resolve release tag
+        id: tag
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="${{ inputs.release_tag }}"
+          if [[ -z "$tag" ]]; then
+            tag="${GITHUB_REF_NAME}"
+          fi
+          echo "tag=$tag" >>"$GITHUB_OUTPUT"
+
+      - name: Generate release notes from changelog
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x ./scripts/generate_release_notes.sh
+          ./scripts/generate_release_notes.sh "${{ steps.tag.outputs.tag }}" --output release-notes.md
+
+      - name: Create or update GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag.outputs.tag }}
+          body_path: release-notes.md
+          generate_release_notes: false
+          update_existing: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
