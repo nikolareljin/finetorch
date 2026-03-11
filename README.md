@@ -2,6 +2,14 @@
 
 Finetorch is a Rust-native CLI and library toolkit for practical LLM finetuning on a single GPU. It is designed around lightweight adapter training rather than full pretraining, with clear boundaries between dataset preparation, backend integration, training orchestration, and evaluation.
 
+## Documentation
+
+- [Architecture](docs/architecture.md)
+- [Configuration Guide](docs/configuration.md)
+- [CLI Workflows](docs/cli-workflows.md)
+- [Backend and Adapter Design](docs/backends.md)
+- [Changelog](CHANGELOG.md)
+
 ## Architecture Overview
 
 Finetorch is split into four primary layers:
@@ -83,6 +91,11 @@ src/
     metrics.rs
 configs/
   example_run.toml
+docs/
+  architecture.md
+  configuration.md
+  cli-workflows.md
+  backends.md
 ```
 
 ## Example Commands

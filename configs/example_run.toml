@@ -8,7 +8,7 @@ enabled = true
 use_qlora = true
 r = 16
 alpha = 32
- dropout = 0.05
+dropout = 0.05
 target_modules = ["q_proj", "k_proj", "v_proj", "o_proj"]
 
 [training]
