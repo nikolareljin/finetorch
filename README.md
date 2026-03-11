@@ -6,9 +6,45 @@ Finetorch is a Rust-native CLI and library toolkit for practical LLM finetuning 
 
 - [Architecture](docs/architecture.md)
 - [Configuration Guide](docs/configuration.md)
+- [Getting Started](docs/getting-started.md)
 - [CLI Workflows](docs/cli-workflows.md)
+- [Use Cases](docs/use-cases.md)
 - [Backend and Adapter Design](docs/backends.md)
 - [Changelog](CHANGELOG.md)
+
+## Quick Start
+
+Create a small JSONL dataset:
+
+```bash
+mkdir -p data
+cat > data/train.jsonl <<'EOF'
+{"instruction":"Answer briefly","input":"What is LoRA?","output":"LoRA is a parameter-efficient finetuning method."}
+{"prompt":"Complete: Gemma is","completion":"a family of language models."}
+EOF
+```
+
+Prepare shards:
+
+```bash
+cargo run -- prepare-dataset \
+  --input data/train.jsonl \
+  --output artifacts/dataset
+```
+
+Run the scaffolded training flow:
+
+```bash
+cargo run -- train --config configs/example_run.toml
+```
+
+Evaluate a held-out file:
+
+```bash
+cargo run -- eval \
+  --config configs/example_run.toml \
+  --dataset data/train.jsonl
+```
 
 ## Architecture Overview
 
@@ -94,7 +130,9 @@ configs/
 docs/
   architecture.md
   configuration.md
+  getting-started.md
   cli-workflows.md
+  use-cases.md
   backends.md
 ```
 
