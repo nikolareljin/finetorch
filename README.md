@@ -172,3 +172,11 @@ This scaffold focuses on:
 - Backend extensibility
 
 This scaffold does not yet implement a production-grade GPU training kernel. It establishes the module boundaries and execution flow needed to add those pieces incrementally.
+
+---
+
+## Clone traffic
+
+![Clone traffic](https://raw.githubusercontent.com/nikolareljin/stats/main/charts/finetorch.svg)
+
+_Updated daily. Total and unique cloners over the last 14 days._
