@@ -32,7 +32,7 @@ cargo run -- prepare-dataset \
   --output artifacts/dataset
 ```
 
-Run the scaffolded training flow:
+Run the training flow:
 
 ```bash
 cargo run -- train --config configs/example_run.toml

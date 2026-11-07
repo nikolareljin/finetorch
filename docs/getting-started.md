@@ -8,7 +8,7 @@ Current working scope:
 - normalize supported JSONL training data
 - shard datasets into train and validation splits
 - load a TOML run configuration
-- execute scaffolded train and eval flows
+- execute train and eval flows
 - emit adapter and metrics artifact placeholders
 
 Current non-goals:
@@ -73,7 +73,7 @@ artifacts/dataset/
 
 ## Step 3: Inspect the Example Run Config
 
-The scaffolded config lives in [../configs/example_run.toml](../configs/example_run.toml).
+The config lives in [../configs/example_run.toml](../configs/example_run.toml).
 
 Key sections:
 - `[model]`

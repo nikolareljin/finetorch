@@ -6,6 +6,7 @@ All notable changes to Finetorch are documented in this file.
 
 ### Added
 
+- End-to-end demo script and docs cleanup.
 - Merge subcommand and adapter lineage manifests.
 - Evaluation metrics with greedy generation and adapter comparison.
 - Machine-readable run summaries.

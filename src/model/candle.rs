@@ -633,6 +633,27 @@ impl CandleBackend {
             }
         }
         // clear adapter vars
+        if self.lm_head.has_lora {
+            if let (Some(a), Some(b)) = (self.lm_head.lora_a.clone(), self.lm_head.lora_b.clone()) {
+                let scale = if self.lm_head.lora_r > 0 {
+                    self.lm_head.lora_alpha as f32 / self.lm_head.lora_r as f32
+                } else {
+                    1.0
+                };
+                let a_t = a.as_tensor().t().unwrap();
+                let b_t = b.as_tensor().t().unwrap();
+                if let Ok(delta) = b_t.matmul(&a_t) {
+                    if let Ok(delta) = delta * (scale as f64) {
+                        if let Ok(new_weight) = &self.lm_head.weight + &delta {
+                            self.lm_head.weight = new_weight;
+                        }
+                    }
+                }
+            }
+            self.lm_head.lora_a = None;
+            self.lm_head.lora_b = None;
+            self.lm_head.has_lora = false;
+        }
         self.adapter_vars.clear();
         self.train_vars.clear();
     }
@@ -709,6 +730,7 @@ impl LlmBackend for CandleBackend {
             "gate_proj",
             "up_proj",
             "down_proj",
+            "lm_head",
         ];
         for t in &config.target_modules {
             if !allowed.contains(&t.as_str()) {
@@ -746,6 +768,20 @@ impl LlmBackend for CandleBackend {
                 }
             }
         }
+        if targets.iter().any(|t| t == "lm_head") {
+            self.lm_head.apply_lora(config)?;
+            if let Some(a) = &self.lm_head.lora_a {
+                self.train_vars.push(a.clone());
+                self.adapter_vars
+                    .push(("lm_head.lora_a".to_string(), a.clone()));
+            }
+            if let Some(b) = &self.lm_head.lora_b {
+                self.train_vars.push(b.clone());
+                self.adapter_vars
+                    .push(("lm_head.lora_b".to_string(), b.clone()));
+            }
+        }
+
         self.opt_step = 0;
         self.moment1.clear();
         self.moment2.clear();

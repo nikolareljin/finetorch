@@ -11,3 +11,4 @@ export CARGO_INCREMENTAL=0
 mkdir -p "$TMPDIR"
 
 cargo test
+cargo test --features backend-candle

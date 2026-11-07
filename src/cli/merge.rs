@@ -1,7 +1,10 @@
 use std::path::PathBuf;
 
+#[cfg(feature = "backend-candle")]
 use crate::artifact::{write_artifact_manifest, ArtifactManifest};
+#[cfg(feature = "backend-candle")]
 use crate::config::RunConfig;
+#[cfg(feature = "backend-candle")]
 use crate::model::backend::LlmBackend;
 use anyhow::Result;
 

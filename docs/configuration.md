@@ -27,7 +27,7 @@ Fields:
   - Filesystem path to the base model or model directory.
 - `backend`
   - Backend implementation name.
-  - Current scaffolded backend: `llama_cpp`.
+  - Current backend: `llama_cpp`.
 - `tokenizer`
   - Tokenizer selection string.
   - Current scaffold accepts the value but does not yet map named tokenizers to production tokenization kernels.
