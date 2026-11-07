@@ -27,7 +27,7 @@ pub fn run(args: MergeArgs) -> Result<()> {
         let mut backend = CandleBackend::default();
         backend.load_model(&args.base.display().to_string())?;
         backend.reload_adapter(&args.adapter.display().to_string())?;
-        backend.merge_adapters();
+        backend.merge_adapters()?;
         if args.output.exists() {
             return Err(anyhow::anyhow!(
                 "output already exists: {}",

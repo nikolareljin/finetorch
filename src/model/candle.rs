@@ -245,7 +245,7 @@ impl CandleBackend {
                         .wrapping_add(layer as u64 * 1000)) as f32;
                     *v = ((x / u32::MAX as f32) - 0.5) * 0.1;
                 }
-                let weight = Tensor::from_vec(w, (out, inn), device).unwrap();
+                let weight = Tensor::from_vec(w, (out, inn), device).expect("tensor shape");
                 Linear::new(weight, None)
             };
             let block = Block {
@@ -604,7 +604,7 @@ impl CandleBackend {
         Ok(tokens)
     }
 
-    pub fn merge_adapters(&mut self) {
+    pub fn merge_adapters(&mut self) -> Result<()> {
         for block in &mut self.blocks {
             let mut linears: Vec<&mut Linear> = vec![
                 &mut block.q,
@@ -624,8 +624,8 @@ impl CandleBackend {
                             1.0
                         };
                         // b is [r, out], a is [in, r]; delta [out, in] = b^T (out,r) @ a^T (r,in)
-                        let b_t = b.as_tensor().t().unwrap();
-                        let a_t = a.as_tensor().t().unwrap();
+                        let b_t = b.as_tensor().t().map_err(|e| anyhow!("{e}"))?;
+                        let a_t = a.as_tensor().t().map_err(|e| anyhow!("{e}"))?;
                         if let Ok(delta) = b_t.matmul(&a_t) {
                             if let Ok(delta) = delta * (scale as f64) {
                                 let weight = linear.weight.clone();
@@ -649,8 +649,8 @@ impl CandleBackend {
                 } else {
                     1.0
                 };
-                let a_t = a.as_tensor().t().unwrap();
-                let b_t = b.as_tensor().t().unwrap();
+                let a_t = a.as_tensor().t().map_err(|e| anyhow!("{e}"))?;
+                let b_t = b.as_tensor().t().map_err(|e| anyhow!("{e}"))?;
                 if let Ok(delta) = b_t.matmul(&a_t) {
                     if let Ok(delta) = delta * (scale as f64) {
                         if let Ok(new_weight) = &self.lm_head.weight + &delta {
@@ -665,6 +665,7 @@ impl CandleBackend {
         }
         self.adapter_vars.clear();
         self.train_vars.clear();
+        Ok(())
     }
 
     pub fn capabilities_report(&self) -> BackendCapabilities {
@@ -705,7 +706,7 @@ impl CandleBackend {
 impl Default for CandleBackend {
     fn default() -> Self {
         let device = Device::Cpu;
-        Self::build_random(&ModelMemory::default(), 42, &device).unwrap()
+        Self::build_random(&ModelMemory::default(), 42, &device).expect("default model build")
     }
 }
 
