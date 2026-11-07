@@ -183,14 +183,17 @@ impl Block {
         let scores = q.matmul(&k.transpose(1, 2)?)?;
         let scale = 1.0 / (q.dims()[2] as f64).sqrt();
         let scores = (scores * scale)?;
+        let batch = q.dims()[0];
         let seq = q.dims()[1];
-        let mut mask = vec![0f32; seq * seq];
-        for i in 0..seq {
-            for j in (i + 1)..seq {
-                mask[i * seq + j] = f32::NEG_INFINITY;
+        let mut mask = vec![0f32; batch * seq * seq];
+        for b in 0..batch {
+            for i in 0..seq {
+                for j in (i + 1)..seq {
+                    mask[b * seq * seq + i * seq + j] = f32::NEG_INFINITY;
+                }
             }
         }
-        let causal = Tensor::from_vec(mask, (seq, seq), self.q.weight.device())?;
+        let causal = Tensor::from_vec(mask, (batch, seq, seq), self.q.weight.device())?;
         let scores = (scores + causal)?;
         let attn = ops::softmax(&scores, 2)?;
         let ctx = attn.matmul(&v)?;
