@@ -6,6 +6,8 @@ All notable changes to Finetorch are documented in this file.
 
 ### Added
 
+- Evaluation metrics with greedy generation and adapter comparison.
+- Machine-readable run summaries.
 - Checkpoint save/restore with adapter and optimizer state.
 - Tokenizer loading from local tokenizer files and dataset manifest v1 with validation.
 - Padded training batches with attention masks and labels from prepared shards.

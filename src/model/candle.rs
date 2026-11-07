@@ -731,30 +731,32 @@ impl LlmBackend for CandleBackend {
             let v = self.config.vocab_size;
             let logits_flat = logits.reshape((b * s, v))?;
             let vals = logits_flat.to_vec2::<f32>()?;
-            let (mut _total, mut count) = (0.0f64, 0usize);
+            let mut total = 0.0f64;
+            let mut count = 0usize;
             for i in 0..b {
                 for j in 0..s {
                     let lab = batch.labels[i][j];
                     if lab != -100 {
+                        let idx = i * s + j;
+                        let row = &vals[idx];
+                        let label = if lab < 0 { 0usize } else { (lab as usize) % v };
+                        let max = row.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
+                        let sum_exp: f32 = row.iter().map(|x| (x - max).exp()).sum();
+                        let log_prob = row[label] as f64 - max as f64 - (sum_exp as f64).ln();
+                        total -= log_prob;
                         count += 1;
                     }
                 }
             }
-            let _ = (_total, count, vals);
-            // Convert logit value to CE? This is placeholder probability not differentiable but forward used for eval maybe
             if count > 0 {
-                Some(0.0)
+                Some((total / count as f64) as f32)
             } else {
                 None
             }
         } else {
             None
         };
-        let _ = loss;
-        Ok(ForwardOutput {
-            loss: None,
-            logits_shape,
-        })
+        Ok(ForwardOutput { loss, logits_shape })
     }
 
     fn set_training_config(&mut self, config: &TrainingConfig) {
@@ -827,8 +829,7 @@ impl LlmBackend for CandleBackend {
         }
 
         if dir.join("adapter.safetensors").exists() {
-            let ts =
-                candle_core::safetensors::load(dir.join("adapter.safetensors"), &self.device)?;
+            let ts = candle_core::safetensors::load(dir.join("adapter.safetensors"), &self.device)?;
             for (name, var) in &self.adapter_vars {
                 if let Some(t) = ts.get(name) {
                     var.set(t)?;
@@ -864,6 +865,10 @@ impl LlmBackend for CandleBackend {
             self.opt_step = step;
         }
         Ok(step)
+    }
+
+    fn generate(&self, prompt: &[u32], max_new_tokens: usize) -> Result<Vec<u32>> {
+        self.generate(prompt, max_new_tokens)
     }
 
     fn save_adapters(&self, output_path: &str) -> Result<()> {

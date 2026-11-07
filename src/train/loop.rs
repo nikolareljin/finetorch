@@ -95,6 +95,7 @@ pub fn run_training(
 
     let log_path = output_dir.join("train_metrics.jsonl");
     let adapter_path = output_dir.join("adapter.safetensors");
+    let mut last_loss = 0.0f32;
     let mut log_file = if start_step > 0 {
         OpenOptions::new()
             .create(true)
@@ -115,6 +116,7 @@ pub fn run_training(
             labels: batch.labels.clone(),
         };
         let loss = backend.train_step(&forward_batch, global_step)?;
+        last_loss = loss;
         writeln!(
             log_file,
             "{}",
@@ -137,6 +139,17 @@ pub fn run_training(
     }
 
     backend.save_adapters(adapter_path.to_str().unwrap_or("adapter.safetensors"))?;
+
+    let summary = serde_json::json!({
+        "adapter_path": adapter_path,
+        "log_path": log_path,
+        "final_loss": last_loss,
+        "global_step": total,
+    });
+    fs::write(
+        output_dir.join("run_summary.json"),
+        serde_json::to_string_pretty(&summary)?,
+    )?;
 
     Ok(TrainingArtifacts {
         adapter_path,

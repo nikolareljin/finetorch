@@ -53,4 +53,8 @@ pub trait LlmBackend {
     fn load_checkpoint(&mut self, _dir: &str, _expected_hash: &str) -> Result<usize> {
         Err(anyhow::anyhow!("training not supported"))
     }
+
+    fn generate(&self, _prompt: &[u32], _max_new_tokens: usize) -> Result<Vec<u32>> {
+        Err(anyhow::anyhow!("generation not supported"))
+    }
 }
