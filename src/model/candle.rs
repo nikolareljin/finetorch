@@ -595,6 +595,48 @@ impl CandleBackend {
         Ok(tokens)
     }
 
+    pub fn merge_adapters(&mut self) {
+        for block in &mut self.blocks {
+            let mut linears: Vec<&mut Linear> = vec![
+                &mut block.q,
+                &mut block.k,
+                &mut block.v,
+                &mut block.o,
+                &mut block.gate,
+                &mut block.up,
+                &mut block.down,
+            ];
+            for linear in &mut linears {
+                if linear.has_lora {
+                    if let (Some(a), Some(b)) = (linear.lora_a.clone(), linear.lora_b.clone()) {
+                        let scale = if linear.lora_r > 0 {
+                            linear.lora_alpha as f32 / linear.lora_r as f32
+                        } else {
+                            1.0
+                        };
+                        // b is [r, out], a is [in, r]; delta [out, in] = b^T (out,r) @ a^T (r,in)
+                        let b_t = b.as_tensor().t().unwrap();
+                        let a_t = a.as_tensor().t().unwrap();
+                        if let Ok(delta) = b_t.matmul(&a_t) {
+                            if let Ok(delta) = delta * (scale as f64) {
+                                let weight = linear.weight.clone();
+                                if let Ok(new_weight) = &weight + &delta {
+                                    linear.weight = new_weight;
+                                }
+                            }
+                        }
+                    }
+                    linear.lora_a = None;
+                    linear.lora_b = None;
+                    linear.has_lora = false;
+                }
+            }
+        }
+        // clear adapter vars
+        self.adapter_vars.clear();
+        self.train_vars.clear();
+    }
+
     pub fn capabilities_report(&self) -> BackendCapabilities {
         BackendCapabilities {
             supports_lora: true,

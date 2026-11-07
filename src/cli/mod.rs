@@ -2,6 +2,7 @@ use anyhow::Result;
 use clap::{Parser, Subcommand};
 
 pub mod eval;
+pub mod merge;
 pub mod prepare;
 pub mod train;
 
@@ -21,6 +22,7 @@ pub enum Commands {
     PrepareDataset(prepare::PrepareDatasetArgs),
     Train(train::TrainArgs),
     Eval(eval::EvalArgs),
+    Merge(merge::MergeArgs),
 }
 
 pub fn run(cli: Cli) -> Result<()> {
@@ -28,5 +30,6 @@ pub fn run(cli: Cli) -> Result<()> {
         Commands::PrepareDataset(args) => prepare::run(args),
         Commands::Train(args) => train::run(args),
         Commands::Eval(args) => eval::run(args),
+        Commands::Merge(args) => merge::run(args),
     }
 }

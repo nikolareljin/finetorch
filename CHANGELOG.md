@@ -6,6 +6,7 @@ All notable changes to Finetorch are documented in this file.
 
 ### Added
 
+- Merge subcommand and adapter lineage manifests.
 - Evaluation metrics with greedy generation and adapter comparison.
 - Machine-readable run summaries.
 - Checkpoint save/restore with adapter and optimizer state.
