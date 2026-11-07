@@ -6,6 +6,7 @@ All notable changes to Finetorch are documented in this file.
 
 ### Added
 
+- Checkpoint save/restore with adapter and optimizer state.
 - Tokenizer loading from local tokenizer files and dataset manifest v1 with validation.
 - Padded training batches with attention masks and labels from prepared shards.
 - Candle backend with a Llama-style model and LoRA layers, real optimizer training, and adapter save/reload.

@@ -45,4 +45,12 @@ pub trait LlmBackend {
     fn train_step(&mut self, _batch: &ForwardBatch, _global_step: usize) -> Result<f32> {
         Err(anyhow::anyhow!("training not supported"))
     }
+
+    fn save_checkpoint(&self, _dir: &str, _step: usize, _config_hash: &str) -> Result<()> {
+        Err(anyhow::anyhow!("training not supported"))
+    }
+
+    fn load_checkpoint(&mut self, _dir: &str, _expected_hash: &str) -> Result<usize> {
+        Err(anyhow::anyhow!("training not supported"))
+    }
 }

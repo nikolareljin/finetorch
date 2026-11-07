@@ -4,7 +4,7 @@ use std::path::Path;
 
 use anyhow::{anyhow, Result};
 use candle_core::{DType, Device, Tensor, Var};
-use candle_nn::{ops, AdamW, Optimizer};
+use candle_nn::ops;
 use serde::Deserialize;
 
 use crate::config::TrainingConfig;
@@ -207,7 +207,9 @@ pub struct CandleBackend {
     lora_config: Option<LoraConfig>,
     train_vars: Vec<Var>,
     adapter_vars: Vec<(String, Var)>,
-    optimizer: Option<AdamW>,
+    opt_step: usize,
+    moment1: Vec<Var>,
+    moment2: Vec<Var>,
     training_lr: f64,
     weight_decay: f64,
     warmup_steps: usize,
@@ -279,7 +281,9 @@ impl CandleBackend {
             lora_config: None,
             train_vars: Vec::new(),
             adapter_vars: Vec::new(),
-            optimizer: None,
+            opt_step: 0,
+            moment1: Vec::new(),
+            moment2: Vec::new(),
             training_lr: 1e-3,
             weight_decay: 0.0,
             warmup_steps: 0,
@@ -501,22 +505,19 @@ impl CandleBackend {
         if self.train_vars.is_empty() {
             return Err(anyhow!("training requires apply_lora with target modules"));
         }
-        if self.optimizer.is_none() {
-            let params = candle_nn::ParamsAdamW {
-                lr: self.training_lr,
-                weight_decay: self.weight_decay,
-                ..Default::default()
-            };
-            self.optimizer = Some(AdamW::new(self.train_vars.clone(), params)?);
+        if self.moment1.is_empty() {
+            for var in &self.train_vars {
+                self.moment1
+                    .push(Var::zeros(var.shape(), var.dtype(), var.device())?);
+                self.moment2
+                    .push(Var::zeros(var.shape(), var.dtype(), var.device())?);
+            }
         }
-        if let Some(opt) = &mut self.optimizer {
-            let lr = if self.warmup_steps > 0 && global_step < self.warmup_steps {
-                self.training_lr * (global_step as f64 + 1.0) / (self.warmup_steps as f64)
-            } else {
-                self.training_lr
-            };
-            opt.set_learning_rate(lr);
-        }
+        let lr = if self.warmup_steps > 0 && global_step < self.warmup_steps {
+            self.training_lr * (global_step as f64 + 1.0) / (self.warmup_steps as f64)
+        } else {
+            self.training_lr
+        };
         let b = batch.input_ids.len();
         if b == 0 {
             return Err(anyhow!("empty batch"));
@@ -545,8 +546,29 @@ impl CandleBackend {
             .collect();
         let labels_t = Tensor::from_vec(labels_for_loss, (b * s,), &self.device)?;
         let ce = candle_nn::loss::cross_entropy(&logits_flat, &labels_t)?;
-        if let Some(opt) = &mut self.optimizer {
-            opt.backward_step(&ce)?;
+        let grads = ce.backward()?;
+        let beta1 = 0.9f64;
+        let beta2 = 0.999f64;
+        let eps = 1e-8f64;
+        self.opt_step += 1;
+        let t = self.opt_step as f64;
+        let bc1 = 1.0 - beta1.powf(t);
+        let bc2 = 1.0 - beta2.powf(t);
+        for (i, var) in self.train_vars.iter().enumerate() {
+            if let Some(g) = grads.get(var) {
+                let m_prev = self.moment1[i].as_tensor();
+                let v_prev = self.moment2[i].as_tensor();
+                let next_m = ((m_prev * beta1)? + (g * (1.0 - beta1))?)?;
+                let next_v = ((v_prev * beta2)? + (g.sqr()? * (1.0 - beta2))?)?;
+                self.moment1[i].set(&next_m)?;
+                self.moment2[i].set(&next_v)?;
+                let m_hat = (next_m * (1.0 / bc1))?;
+                let v_hat = (next_v * (1.0 / bc2))?;
+                let current = var.as_tensor();
+                let scaled_grad = (m_hat / (v_hat.sqrt()? + eps)?)?;
+                let next = ((current * (1.0 - lr * self.weight_decay))? - (scaled_grad * lr))?;
+                var.set(&next)?;
+            }
         }
         Ok(ce.to_vec0::<f32>()?)
     }
@@ -682,7 +704,9 @@ impl LlmBackend for CandleBackend {
                 }
             }
         }
-        self.optimizer = None;
+        self.opt_step = 0;
+        self.moment1.clear();
+        self.moment2.clear();
         Ok(())
     }
 
@@ -739,6 +763,107 @@ impl LlmBackend for CandleBackend {
 
     fn train_step(&mut self, batch: &ForwardBatch, global_step: usize) -> Result<f32> {
         self.train_step(batch, global_step)
+    }
+
+    fn save_checkpoint(&self, dir: &str, step: usize, config_hash: &str) -> Result<()> {
+        let dir = Path::new(dir);
+        let parent = dir.parent().unwrap_or(Path::new("."));
+        fs::create_dir_all(parent)?;
+        let temp = parent.join(format!(".checkpoint-tmp-{step}"));
+        if temp.exists() {
+            fs::remove_dir_all(&temp)?;
+        }
+        fs::create_dir_all(&temp)?;
+        let manifest = serde_json::json!({
+            "step": step,
+            "config_hash": config_hash,
+        });
+        fs::write(
+            temp.join("checkpoint.json"),
+            serde_json::to_string_pretty(&manifest)?,
+        )?;
+
+        if !self.adapter_vars.is_empty() {
+            let mut map = HashMap::new();
+            for (name, var) in &self.adapter_vars {
+                map.insert(name.clone(), var.as_tensor().clone());
+            }
+            candle_core::safetensors::save(&map, temp.join("adapter.safetensors"))?;
+        }
+        if !self.train_vars.is_empty() {
+            let mut map = HashMap::new();
+            for (i, var) in self.train_vars.iter().enumerate() {
+                map.insert(format!("var.{i}"), var.as_tensor().clone());
+            }
+            for (i, var) in self.moment1.iter().enumerate() {
+                map.insert(format!("mom1.{i}"), var.as_tensor().clone());
+            }
+            for (i, var) in self.moment2.iter().enumerate() {
+                map.insert(format!("mom2.{i}"), var.as_tensor().clone());
+            }
+            candle_core::safetensors::save(&map, temp.join("optimizer.safetensors"))?;
+        }
+        if dir.exists() {
+            fs::remove_dir_all(dir)?;
+        }
+        fs::rename(&temp, dir)?;
+        Ok(())
+    }
+
+    fn load_checkpoint(&mut self, dir: &str, expected_hash: &str) -> Result<usize> {
+        let dir = Path::new(dir);
+        let raw = fs::read_to_string(dir.join("checkpoint.json"))
+            .map_err(|e| anyhow!("truncated checkpoint: {e}"))?;
+        let value: serde_json::Value =
+            serde_json::from_str(&raw).map_err(|e| anyhow!("truncated checkpoint: {e}"))?;
+        let step = value["step"]
+            .as_u64()
+            .ok_or_else(|| anyhow!("truncated checkpoint"))? as usize;
+        let hash = value["config_hash"]
+            .as_str()
+            .ok_or_else(|| anyhow!("truncated checkpoint"))?;
+        if hash != expected_hash {
+            return Err(anyhow!("config hash mismatch"));
+        }
+
+        if dir.join("adapter.safetensors").exists() {
+            let ts =
+                candle_core::safetensors::load(dir.join("adapter.safetensors"), &self.device)?;
+            for (name, var) in &self.adapter_vars {
+                if let Some(t) = ts.get(name) {
+                    var.set(t)?;
+                }
+            }
+        }
+        if dir.join("optimizer.safetensors").exists() {
+            let ts =
+                candle_core::safetensors::load(dir.join("optimizer.safetensors"), &self.device)?;
+            for (i, var) in self.train_vars.iter().enumerate() {
+                if let Some(t) = ts.get(&format!("var.{i}")) {
+                    var.set(t)?;
+                }
+            }
+            if self.moment1.is_empty() {
+                for var in &self.train_vars {
+                    self.moment1
+                        .push(Var::zeros(var.shape(), var.dtype(), var.device())?);
+                    self.moment2
+                        .push(Var::zeros(var.shape(), var.dtype(), var.device())?);
+                }
+            }
+            for (i, var) in self.moment1.iter().enumerate() {
+                if let Some(t) = ts.get(&format!("mom1.{i}")) {
+                    var.set(t)?;
+                }
+            }
+            for (i, var) in self.moment2.iter().enumerate() {
+                if let Some(t) = ts.get(&format!("mom2.{i}")) {
+                    var.set(t)?;
+                }
+            }
+            self.opt_step = step;
+        }
+        Ok(step)
     }
 
     fn save_adapters(&self, output_path: &str) -> Result<()> {

@@ -64,6 +64,19 @@ impl RunConfig {
         let raw = fs::read_to_string(path)?;
         Ok(toml::from_str(&raw)?)
     }
+
+    pub fn config_hash(&self) -> String {
+        let mut clone = self.clone();
+        clone.training.max_steps = 0;
+        clone.training.output_dir.clear();
+        let serialized = serde_json::to_string(&clone).unwrap_or_default();
+        let mut hash: u64 = 0xcbf29ce484222325;
+        for byte in serialized.bytes() {
+            hash ^= byte as u64;
+            hash = hash.wrapping_mul(0x100000001b3);
+        }
+        format!("{:016x}", hash)
+    }
 }
 
 fn default_max_seq_len() -> usize {

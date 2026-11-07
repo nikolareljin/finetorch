@@ -1,4 +1,4 @@
-use std::fs::{self, File};
+use std::fs::{self, File, OpenOptions};
 use std::io::Write;
 use std::path::PathBuf;
 
@@ -16,7 +16,34 @@ pub struct TrainingArtifacts {
     pub log_path: PathBuf,
 }
 
-pub fn run_training(config: &RunConfig, backend: &mut dyn LlmBackend) -> Result<TrainingArtifacts> {
+pub fn run_training(
+    config: &RunConfig,
+    backend: &mut dyn LlmBackend,
+    resume_from: Option<&str>,
+) -> Result<TrainingArtifacts> {
+    let config_hash = config.config_hash();
+
+    let auto_resume = resume_from.map(PathBuf::from).or_else(|| {
+        let cp = PathBuf::from(&config.training.output_dir).join("checkpoint");
+        if cp.exists() {
+            Some(cp)
+        } else {
+            None
+        }
+    });
+
+    if auto_resume.is_none() {
+        let output_dir = PathBuf::from(&config.training.output_dir);
+        if output_dir.exists()
+            && output_dir
+                .read_dir()
+                .map(|mut d| d.next().is_some())
+                .unwrap_or(false)
+        {
+            return Err(anyhow!("run already exists: {}", output_dir.display()));
+        }
+    }
+
     backend.load_model(&config.model.base_path)?;
     if config.lora.enabled {
         backend.apply_lora(&config.lora)?;
@@ -25,6 +52,12 @@ pub fn run_training(config: &RunConfig, backend: &mut dyn LlmBackend) -> Result<
         return Err(anyhow!("training not supported"));
     }
     backend.set_training_config(&config.training);
+
+    let start_step = if let Some(cp) = &auto_resume {
+        backend.load_checkpoint(cp.to_str().unwrap_or(""), &config_hash)?
+    } else {
+        0
+    };
 
     let tokenizer = TokenizerSpec::from_cli(&config.model.tokenizer).resolve()?;
 
@@ -62,9 +95,16 @@ pub fn run_training(config: &RunConfig, backend: &mut dyn LlmBackend) -> Result<
 
     let log_path = output_dir.join("train_metrics.jsonl");
     let adapter_path = output_dir.join("adapter.safetensors");
-    let mut log_file = File::create(&log_path)?;
+    let mut log_file = if start_step > 0 {
+        OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&log_path)?
+    } else {
+        File::create(&log_path)?
+    };
 
-    let mut global_step = 0usize;
+    let mut global_step = start_step;
     let total = config.training.max_steps;
     while global_step < total {
         let batch_idx = global_step % batches.len();
@@ -84,6 +124,14 @@ pub fn run_training(config: &RunConfig, backend: &mut dyn LlmBackend) -> Result<
                 "device": config.training.device,
                 "gradient_accumulation": config.training.gradient_accumulation,
             }))?
+        )?;
+        backend.save_checkpoint(
+            PathBuf::from(&config.training.output_dir)
+                .join("checkpoint")
+                .to_str()
+                .unwrap_or("checkpoint"),
+            global_step + 1,
+            &config_hash,
         )?;
         global_step += 1;
     }
