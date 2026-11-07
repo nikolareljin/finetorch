@@ -49,6 +49,8 @@ pub struct DataConfig {
     pub max_seq_len: usize,
     #[serde(default = "default_true")]
     pub shuffle: bool,
+    #[serde(default)]
+    pub truncation: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

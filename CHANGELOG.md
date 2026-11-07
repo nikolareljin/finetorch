@@ -4,6 +4,15 @@ All notable changes to Finetorch are documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- Tokenizer loading from local tokenizer files and dataset manifest v1 with validation.
+- Padded training batches with attention masks and labels from prepared shards.
+
+### Changed
+
+- Training loop now consumes prepared dataset batches instead of synthetic data.
+
 ## [0.1.0] - 2026-03-11
 
 ### Added

@@ -4,7 +4,9 @@ use crate::model::lora::LoraConfig;
 
 #[derive(Debug, Clone)]
 pub struct ForwardBatch {
-    pub token_batches: Vec<Vec<u32>>,
+    pub input_ids: Vec<Vec<u32>>,
+    pub attention_mask: Vec<Vec<u8>>,
+    pub labels: Vec<Vec<i64>>,
 }
 
 #[derive(Debug, Clone)]

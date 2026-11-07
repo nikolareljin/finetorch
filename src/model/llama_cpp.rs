@@ -28,14 +28,10 @@ impl LlmBackend for LlamaCppBackend {
             return Err(anyhow!("model must be loaded before forward"));
         }
         Ok(ForwardOutput {
-            loss: Some((batch.token_batches.len() as f32).max(1.0) / 100.0),
+            loss: Some((batch.input_ids.len() as f32).max(1.0) / 100.0),
             logits_shape: vec![
-                batch.token_batches.len(),
-                batch
-                    .token_batches
-                    .first()
-                    .map(|b| b.len())
-                    .unwrap_or_default(),
+                batch.input_ids.len(),
+                batch.input_ids.first().map(|b| b.len()).unwrap_or_default(),
                 4096,
             ],
         })

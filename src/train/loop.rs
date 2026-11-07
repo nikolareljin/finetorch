@@ -5,9 +5,10 @@ use std::path::PathBuf;
 use anyhow::Result;
 
 use crate::config::RunConfig;
+use crate::data::loader::{build_batches, BatchingConfig, PreparedBatch};
+use crate::data::sharding::{read_shards, validate_dataset_dir};
+use crate::data::tokenizer::TokenizerSpec;
 use crate::model::backend::{ForwardBatch, LlmBackend};
-use crate::train::optimizer::OptimizerConfig;
-use crate::train::scheduler::SchedulerConfig;
 
 #[derive(Debug, Clone)]
 pub struct TrainingArtifacts {
@@ -17,16 +18,40 @@ pub struct TrainingArtifacts {
 
 pub fn run_training(config: &RunConfig, backend: &mut dyn LlmBackend) -> Result<TrainingArtifacts> {
     backend.load_model(&config.model.base_path)?;
-    backend.apply_lora(&config.lora)?;
+    if config.lora.enabled {
+        backend.apply_lora(&config.lora)?;
+    }
 
-    let _optimizer = OptimizerConfig {
-        learning_rate: config.training.lr,
-        weight_decay: config.training.weight_decay,
+    let tokenizer = TokenizerSpec::from_cli(&config.model.tokenizer).resolve()?;
+
+    let train_manifest_dir = if std::path::Path::new(&config.data.train_path)
+        .join("manifest.json")
+        .exists()
+    {
+        std::path::PathBuf::from(&config.data.train_path)
+    } else {
+        std::path::Path::new(&config.data.train_path)
+            .parent()
+            .map(|p| p.to_path_buf())
+            .unwrap_or_else(|| std::path::PathBuf::from(&config.data.train_path))
     };
-    let _scheduler = SchedulerConfig {
-        warmup_steps: config.training.warmup_steps,
-        max_steps: config.training.max_steps,
-    };
+    validate_dataset_dir(&train_manifest_dir)?;
+    let examples = read_shards(&config.data.train_path)?;
+    let batches = build_batches(
+        &examples,
+        &tokenizer,
+        &BatchingConfig {
+            batch_size: config.training.batch_size,
+            max_seq_len: config.data.max_seq_len,
+            shuffle: config.data.shuffle,
+            seed: config.training.seed,
+            truncation: config.data.truncation,
+        },
+    )?;
+
+    if batches.is_empty() {
+        return Err(anyhow::anyhow!("empty dataset: no training batches"));
+    }
 
     let output_dir = PathBuf::from(&config.training.output_dir);
     fs::create_dir_all(&output_dir)?;
@@ -35,23 +60,33 @@ pub fn run_training(config: &RunConfig, backend: &mut dyn LlmBackend) -> Result<
     let adapter_path = output_dir.join("adapter.safetensors");
     let mut log_file = File::create(&log_path)?;
 
-    let steps = config.training.max_steps.min(10);
-    for step in 0..steps {
-        let synthetic_batch = ForwardBatch {
-            token_batches: vec![vec![1, 2, 3, 4]; config.training.batch_size.max(1)],
+    let mut global_step = 0usize;
+    let total = config.training.max_steps;
+    while global_step < total {
+        let batch_idx = global_step % batches.len();
+        let PreparedBatch {
+            input_ids,
+            attention_mask,
+            labels,
+        } = &batches[batch_idx];
+        let forward_batch = ForwardBatch {
+            input_ids: input_ids.clone(),
+            attention_mask: attention_mask.clone(),
+            labels: labels.clone(),
         };
-        let output = backend.forward(&synthetic_batch)?;
-        let loss = output.loss.unwrap_or(0.0) + (step as f32 * 0.001);
+        let output = backend.forward(&forward_batch)?;
+        let loss = output.loss.unwrap_or(0.0);
         writeln!(
             log_file,
             "{}",
             serde_json::to_string(&serde_json::json!({
-                "step": step,
+                "step": global_step,
                 "loss": loss,
                 "device": config.training.device,
                 "gradient_accumulation": config.training.gradient_accumulation,
             }))?
         )?;
+        global_step += 1;
     }
 
     backend.save_adapters(adapter_path.to_str().unwrap_or("adapter.safetensors"))?;
