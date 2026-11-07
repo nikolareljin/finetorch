@@ -13,6 +13,15 @@ pub struct LlamaCppBackend {
 }
 
 impl LlmBackend for LlamaCppBackend {
+    fn capabilities(&self) -> crate::model::backend::BackendCapabilities {
+        crate::model::backend::BackendCapabilities {
+            supports_lora: true,
+            supports_qlora: false,
+            supports_training: false,
+            supports_generation: false,
+            supported_devices: vec!["cpu".to_string()],
+        }
+    }
     fn load_model(&mut self, base_path: &str) -> Result<()> {
         self.base_path = Some(PathBuf::from(base_path));
         Ok(())

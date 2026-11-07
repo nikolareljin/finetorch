@@ -15,9 +15,34 @@ pub struct ForwardOutput {
     pub logits_shape: Vec<usize>,
 }
 
+#[derive(Debug, Clone, Default)]
+pub struct BackendCapabilities {
+    pub supports_lora: bool,
+    pub supports_qlora: bool,
+    pub supports_training: bool,
+    pub supports_generation: bool,
+    pub supported_devices: Vec<String>,
+}
+
+use crate::config::TrainingConfig;
+
 pub trait LlmBackend {
     fn load_model(&mut self, base_path: &str) -> Result<()>;
     fn apply_lora(&mut self, config: &LoraConfig) -> Result<()>;
     fn forward(&mut self, batch: &ForwardBatch) -> Result<ForwardOutput>;
     fn save_adapters(&self, output_path: &str) -> Result<()>;
+
+    fn capabilities(&self) -> BackendCapabilities {
+        BackendCapabilities::default()
+    }
+
+    fn training_supported(&self) -> bool {
+        self.capabilities().supports_training
+    }
+
+    fn set_training_config(&mut self, _config: &TrainingConfig) {}
+
+    fn train_step(&mut self, _batch: &ForwardBatch, _global_step: usize) -> Result<f32> {
+        Err(anyhow::anyhow!("training not supported"))
+    }
 }

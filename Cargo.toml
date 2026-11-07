@@ -45,3 +45,4 @@ wgpu = { version = "24.0", optional = true }
 
 [dev-dependencies]
 tempfile = "3.12"
+

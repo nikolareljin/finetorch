@@ -2,10 +2,10 @@ use std::fs::{self, File};
 use std::io::Write;
 use std::path::PathBuf;
 
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 
 use crate::config::RunConfig;
-use crate::data::loader::{build_batches, BatchingConfig, PreparedBatch};
+use crate::data::loader::{build_batches, BatchingConfig};
 use crate::data::sharding::{read_shards, validate_dataset_dir};
 use crate::data::tokenizer::TokenizerSpec;
 use crate::model::backend::{ForwardBatch, LlmBackend};
@@ -21,6 +21,10 @@ pub fn run_training(config: &RunConfig, backend: &mut dyn LlmBackend) -> Result<
     if config.lora.enabled {
         backend.apply_lora(&config.lora)?;
     }
+    if !backend.training_supported() {
+        return Err(anyhow!("training not supported"));
+    }
+    backend.set_training_config(&config.training);
 
     let tokenizer = TokenizerSpec::from_cli(&config.model.tokenizer).resolve()?;
 
@@ -50,7 +54,7 @@ pub fn run_training(config: &RunConfig, backend: &mut dyn LlmBackend) -> Result<
     )?;
 
     if batches.is_empty() {
-        return Err(anyhow::anyhow!("empty dataset: no training batches"));
+        return Err(anyhow!("empty dataset: no training batches"));
     }
 
     let output_dir = PathBuf::from(&config.training.output_dir);
@@ -64,18 +68,13 @@ pub fn run_training(config: &RunConfig, backend: &mut dyn LlmBackend) -> Result<
     let total = config.training.max_steps;
     while global_step < total {
         let batch_idx = global_step % batches.len();
-        let PreparedBatch {
-            input_ids,
-            attention_mask,
-            labels,
-        } = &batches[batch_idx];
+        let batch = &batches[batch_idx];
         let forward_batch = ForwardBatch {
-            input_ids: input_ids.clone(),
-            attention_mask: attention_mask.clone(),
-            labels: labels.clone(),
+            input_ids: batch.input_ids.clone(),
+            attention_mask: batch.attention_mask.clone(),
+            labels: batch.labels.clone(),
         };
-        let output = backend.forward(&forward_batch)?;
-        let loss = output.loss.unwrap_or(0.0);
+        let loss = backend.train_step(&forward_batch, global_step)?;
         writeln!(
             log_file,
             "{}",
